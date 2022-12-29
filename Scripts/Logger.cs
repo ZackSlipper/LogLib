@@ -195,7 +195,10 @@ public class Logger : IDisposable
     public void Dispose()
     {
         //Sets active to false to message the run task to stop
-        Active = false;
+        lock (messageLock)
+        {
+            Active = false;
+        }
 
         //WaitFor the Run task to finish if it exists
         if (runTask != null)
