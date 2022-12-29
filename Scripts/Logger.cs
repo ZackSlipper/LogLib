@@ -6,14 +6,10 @@ using System.Collections.Generic;
 
 namespace LogLib;
 
-public interface ILogger
+public class Logger : IDisposable
 {
-    public void Log(object message);
-    public void Log(object message, LogType type);
-}
+    static Logger? current = null;
 
-public class Logger : ILogger, IDisposable
-{
     public LoggerProperties Properties { get; }
     public string LogFilePath { get; private set; }
     public bool Active { get; private set; } = false;
@@ -41,6 +37,10 @@ public class Logger : ILogger, IDisposable
     /// <exception cref="Exception">An exception gets thrown in case of invalid property values or failure to open a serial port connection or create a log file stream</exception>
     public Logger(LoggerProperties properties)
     {
+        if (current != null)
+            throw new Exception($"Only one instance of logger allowed");
+        current = this;
+
         Properties = properties;
         LogFilePath = "";
 
@@ -138,14 +138,17 @@ public class Logger : ILogger, IDisposable
     /// Adds a message to be written to the log with the "Info" log type
     /// </summary>
     /// <param name="message">Message object to be converted to a string</param>
-    /// <exception cref="Exception">The exception gets thrown if the Logger has already been disposed and is inactive</exception>
-    public void Log(object message)
+    /// <exception cref="Exception">The exception gets thrown if the Logger has already been disposed, is inactive or doesn't exist</exception>
+    public static void Log(object message)
     { 
-        if (!Active)
+        if (current == null)
+            throw new Exception("No logger initialized");
+
+        if (!current.Active)
             throw new Exception("Logger has been disposed");
 
         if (message != null)
-            messages.Enqueue(new LogMessage(message.ToString(), LogType.Info));
+            current.messages.Enqueue(new LogMessage(message.ToString(), LogType.Info));
     }
 
     /// <summary>
@@ -153,14 +156,17 @@ public class Logger : ILogger, IDisposable
     /// </summary>
     /// <param name="message">Message object to be converted to a string</param>
     /// <param name="type">Message type</param>
-    /// <exception cref="Exception">The exception gets thrown if the Logger has already been disposed and is inactive</exception>
-    public void Log(object message, LogType type)
+    /// <exception cref="Exception">The exception gets thrown if the Logger has already been disposed, is inactive or doesn't exist</exception>
+    public static void Log(object message, LogType type)
     {
-        if (!Active)
+        if (current == null)
+            throw new Exception("No logger initialized");
+
+        if (!current.Active)
             throw new Exception("Logger has been disposed");
 
         if (message != null)
-            messages.Enqueue(new LogMessage(message.ToString(), type));
+            current.messages.Enqueue(new LogMessage(message.ToString(), type));
     }
 
     /// <summary>
@@ -210,5 +216,8 @@ public class Logger : ILogger, IDisposable
 
             serialPort = null;
         }
+
+        //Allow for creation of a new Logger instance
+        current = null;
     }
 }
