@@ -4,7 +4,7 @@ using System.IO.Ports;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 
-namespace LogLib.Scripts;
+namespace LogLib;
 
 public interface ILogger
 {
