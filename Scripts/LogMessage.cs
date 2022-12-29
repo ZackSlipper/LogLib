@@ -14,15 +14,18 @@ public class LogMessage
     public DateTime Time { get; }
     public LogType Type { get; }
 
-    public LogMessage(string message, LogType type)
+    public LogMessage(string? message, LogType type)
     {
-        Message = message;
+        Message = message == null ? "" : message;
         Time = DateTime.Now;
         Type = type;
     }
 
     public override string ToString()
     {
-        return $"[{Type.ToString().ToUpper()}][{Time}] {Message}";
+        if (Type == LogType.Info)
+            return $"[{Time}] {Message}";
+        else
+            return $"[{Type.ToString().ToUpper()}][{Time}] {Message}";
     }
 }
