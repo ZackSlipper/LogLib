@@ -30,18 +30,25 @@ public class Logger : ILogger, IDisposable
 
     StreamWriter? fileStream;
     SerialPort? serialPort;
-    Task runTask;
+    Task? runTask;
 
     Queue<LogMessage> messages = new Queue<LogMessage>();
 
+    /// <summary>
+    /// Initializes the Logger and opens the log file stream or serial port connection if specified in the given properties
+    /// </summary>
+    /// <param name="properties">Logger properties necessary for opening the serial connection or writing to the log file</param>
+    /// <exception cref="Exception">An exception gets thrown in case of invalid property values or failure to open a serial port connection or create a log file stream</exception>
     public Logger(LoggerProperties properties)
     {
         Properties = properties;
         LogFilePath = "";
 
+        //Check if the log file directory provided in the properties exists if necessary
         if (Properties.LogToFile && !Directory.Exists(Properties.LogFileDirectoryPath))
             throw new Exception($"Log directory not found at path: {Properties.LogFileDirectoryPath}");
 
+        //If specified attempt to open the log file stream and/or serial port
         try
         {
             if (Properties.LogToFile)
@@ -58,10 +65,17 @@ public class Logger : ILogger, IDisposable
             throw new Exception("Field to initialize one of the Logger's outputs", ex);
         }
 
+        //Starts the run task that runs for the lifetime of the logger
         Active = true;
         runTask = Task.Factory.StartNew(Run);
+
+        //In case the application gets terminated dispose of the Logger before closing
+        AppDomain.CurrentDomain.ProcessExit += (obj, e) => Dispose();
     }
 
+    /// <summary>
+    /// Writes any queued log messages every millisecond
+    /// </summary>
     async Task Run()
     {
         while (Active)
@@ -74,42 +88,57 @@ public class Logger : ILogger, IDisposable
         await WriteToLog();
     }
 
+    /// <summary>
+    /// If there are any writes log messages to any outputs allowed by the properties
+    /// </summary>
     async Task WriteToLog()
     {
-        LogMessage message;
+        if (messages.Count == 0)
+            return;
+
+        string message;
         for (int i = 0; i < messages.Count; i++)
         {
-            message = messages.Dequeue();
+            //Dequeues the oldest message from the message queue
+            message = messages.Dequeue().ToString();
+
             if (Properties.LogToFile)
             {
+                //Attempts to write the message to the log file
                 try
                 {
                     if (fileStream != null)
-                        await fileStream.WriteLineAsync(message.ToString());
+                        await fileStream.WriteLineAsync(message);
                 }
                 catch (System.Exception ex)
                 {
-                    Console.WriteLine($"Filed to write to file: {ex.Message}{Environment.NewLine}{ex.StackTrace}");
+                    Console.WriteLine($"Filed to write to file: {ex.Message}");
                 }
             }
 
             if (Properties.LogToSerial)
-            { 
+            {
+                //Attempts to write the message to serial port
                 try
                 {
-                    serialPort?.WriteLine(message.ToString());
+                    serialPort?.WriteLine(message);
                 }
                 catch (System.Exception ex)
                 {
-                    Console.WriteLine($"Failed to write to serial port: {ex.Message}{Environment.NewLine}{ex.StackTrace}");
+                    Console.WriteLine($"Failed to write to serial port: {ex.Message}");
                 }
             }
 
             if (Properties.LogToConsole)
-                Console.WriteLine(message.ToString());
+                Console.WriteLine(message);
         }
     }
 
+    /// <summary>
+    /// Adds a message to be written to the log with the "Info" log type
+    /// </summary>
+    /// <param name="message">Message object to be converted to a string</param>
+    /// <exception cref="Exception">The exception gets thrown if the Logger has already been disposed and is inactive</exception>
     public void Log(object message)
     { 
         if (!Active)
@@ -119,6 +148,12 @@ public class Logger : ILogger, IDisposable
             messages.Enqueue(new LogMessage(message.ToString(), LogType.Info));
     }
 
+    /// <summary>
+    /// Adds a message to be written to the log
+    /// </summary>
+    /// <param name="message">Message object to be converted to a string</param>
+    /// <param name="type">Message type</param>
+    /// <exception cref="Exception">The exception gets thrown if the Logger has already been disposed and is inactive</exception>
     public void Log(object message, LogType type)
     {
         if (!Active)
@@ -128,26 +163,39 @@ public class Logger : ILogger, IDisposable
             messages.Enqueue(new LogMessage(message.ToString(), type));
     }
 
+    /// <summary>
+    /// Stops all log write operations and disposes of any used resources
+    /// </summary>
     public void Dispose()
     {
+        //Sets active to false to message the run task to stop
         Active = false;
 
-        //WaitFor the Run task to finish
-        runTask.GetAwaiter().GetResult();
+        //WaitFor the Run task to finish if it exists
+        if (runTask != null)
+        {
+            runTask?.GetAwaiter().GetResult();
+            runTask = null;
+        }
 
+        //If the file stream exist an we try finishing writing to it and closing and disposing of it
         if (fileStream != null)
         {
             try
             {
+                fileStream.Flush();
                 fileStream.Close();
                 fileStream.Dispose();
             }
             catch (System.Exception ex)
             {
-                Console.WriteLine($"Error closing file stream: {ex.Message}{Environment.NewLine}{ex.StackTrace}");
+                Console.WriteLine($"Error closing file stream: {ex.Message}");
             }
+
+            fileStream = null;
         }
 
+        //If a serial port connection exist an we try closing and disposing of it
         if (serialPort != null)
         {
             try
@@ -157,8 +205,10 @@ public class Logger : ILogger, IDisposable
             }
             catch (System.Exception ex)
             {
-                Console.WriteLine($"Error closing serial port: {ex.Message}{Environment.NewLine}{ex.StackTrace}");
+                Console.WriteLine($"Error closing serial port: {ex.Message}");
             }
+
+            serialPort = null;
         }
     }
 }

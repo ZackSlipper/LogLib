@@ -14,6 +14,11 @@ public class LogMessage
     public DateTime Time { get; }
     public LogType Type { get; }
 
+    /// <summary>
+    /// Defines all the values for the current LogMessage instance
+    /// </summary>
+    /// <param name="message">Message object to be converted to a string. If the value is null an empty string will be used</param>
+    /// <param name="type">Message type to be added to the log message if is set to anything other then "Info"</param>
     public LogMessage(string? message, LogType type)
     {
         Message = message == null ? "" : message;
