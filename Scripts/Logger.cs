@@ -28,6 +28,7 @@ public class Logger : IDisposable
     SerialPort? serialPort;
     Task? runTask;
 
+    object messageLock = new Object();
     Queue<LogMessage> messages = new Queue<LogMessage>();
 
     /// <summary>
@@ -80,57 +81,60 @@ public class Logger : IDisposable
     {
         while (Active)
         {
-            await WriteToLog();
+            WriteToLog();
             await Task.Delay(1);
         }
 
         //Write any remaining log messages if there are any
-        await WriteToLog();
+        WriteToLog();
     }
 
     /// <summary>
     /// If there are any writes log messages to any outputs allowed by the properties
     /// </summary>
-    async Task WriteToLog()
+    void WriteToLog()
     {
         if (messages.Count == 0)
             return;
 
-        string message;
-        for (int i = 0; i < messages.Count; i++)
+        lock (messageLock)
         {
-            //Dequeues the oldest message from the message queue
-            message = messages.Dequeue().ToString();
-
-            if (Properties.LogToFile)
+            string message;
+            for (int i = 0; i < messages.Count; i++)
             {
-                //Attempts to write the message to the log file
-                try
-                {
-                    if (fileStream != null)
-                        await fileStream.WriteLineAsync(message);
-                }
-                catch (System.Exception ex)
-                {
-                    Console.WriteLine($"Filed to write to file: {ex.Message}");
-                }
-            }
+                //Dequeues the oldest message from the message queue
+                message = messages.Dequeue().ToString();
 
-            if (Properties.LogToSerial)
-            {
-                //Attempts to write the message to serial port
-                try
+                if (Properties.LogToFile)
                 {
-                    serialPort?.WriteLine(message);
+                    //Attempts to write the message to the log file
+                    try
+                    {
+                        if (fileStream != null)
+                            fileStream.WriteLine(message);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Console.WriteLine($"Filed to write to file: {ex.Message}");
+                    }
                 }
-                catch (System.Exception ex)
-                {
-                    Console.WriteLine($"Failed to write to serial port: {ex.Message}");
-                }
-            }
 
-            if (Properties.LogToConsole)
-                Console.WriteLine(message);
+                if (Properties.LogToSerial)
+                {
+                    //Attempts to write the message to serial port
+                    try
+                    {
+                        serialPort?.WriteLine(message);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Console.WriteLine($"Failed to write to serial port: {ex.Message}");
+                    }
+                }
+
+                if (Properties.LogToConsole)
+                    Console.WriteLine(message);
+            }
         }
     }
 
@@ -148,7 +152,15 @@ public class Logger : IDisposable
             throw new Exception("Logger has been disposed");
 
         if (message != null)
-            current.messages.Enqueue(new LogMessage(message.ToString(), LogType.Info));
+        {
+            Task.Factory.StartNew(() =>
+            {
+                lock (current.messageLock)
+                {
+                    current.messages.Enqueue(new LogMessage(message.ToString(), LogType.Info));
+                }
+            });
+        }
     }
 
     /// <summary>
@@ -166,7 +178,15 @@ public class Logger : IDisposable
             throw new Exception("Logger has been disposed");
 
         if (message != null)
-            current.messages.Enqueue(new LogMessage(message.ToString(), type));
+        {
+            Task.Factory.StartNew(() =>
+            {
+                lock (current.messageLock)
+                {
+                    current.messages.Enqueue(new LogMessage(message.ToString(), LogType.Info));
+                }
+            });
+        }
     }
 
     /// <summary>
